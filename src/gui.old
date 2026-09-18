@@ -1,0 +1,480 @@
+use moveslice::{Moveslice};
+use std::collections::HashMap;
+use std::f64::consts::E;
+
+#[derive(Debug, Default)]
+struct System {
+    reactivity: f64,
+    effective_beta: f64,
+    generation_time: f64,
+    k: f64,
+    neutron_pop: f64,
+    precursors_proportion: [f64; 6],
+    precursors_lambda: [f64; 6],
+    precursors_pop: [f64; 6],
+    rods: f64,
+    boric_acid: f64,
+    depletion: f64,
+    dt: f64,
+    current_time: f64,
+    external_source_activity: f64,    
+    is_scraming: bool,
+    external_source_is_in: bool,    
+    doubling_time_estimator: f64,
+    power_estimator: f64,
+}
+
+#[derive(Debug, Default)]
+struct Progress {
+    last_times: [f64; 20],
+    last_power_estimators: [f64; 20],
+    last_precursors_0: [f64; 20],
+    last_precursors_1: [f64; 20],
+    last_precursors_2: [f64; 20],
+    last_precursors_3: [f64; 20],
+    last_precursors_4: [f64; 20],
+    last_precursors_5: [f64; 20],
+}
+
+#[derive(Default)]
+struct Appstate {
+    system: System,
+    progress: Progress,
+    is_running: bool,
+    time_multiplier: f64,
+    power_estimator_curve_widget: PlotWidget,
+    precursors_curve_widget: PlotWidget,
+}
+
+fn reset_state(state: &mut Appstate) {
+    state.system.reactivity = 0.0e-5;
+    state.system.effective_beta = 650e-5;
+    state.system.generation_time = 1e-4;
+    state.system.k = 1.0;
+    state.system.neutron_pop = 1e5;
+    state.system.precursors_proportion = [0.033, 0.219, 0.196, 0.395, 0.115, 0.042];
+    state.system.precursors_lambda = [1.0/55.9, 1.0/22.7, 1.0/6.24, 1.0/2.3, 1.0/0.61, 1.0/0.23];
+    state.system.precursors_pop = [0.0; 6];
+    state.system.rods = -5500.0e-5;
+    state.system.boric_acid = -15000.0e-5;
+    state.system.depletion = 20000.0e-5;
+    state.system.dt = 1e-5;
+    state.system.current_time = 0.0;
+    state.system.is_scraming = false;
+    state.system.external_source_is_in = true;
+    state.system.external_source_activity = 6.335e11 * 0.1; //100mg of Pu238
+    state.system.doubling_time_estimator = 0.0;
+    state.system.power_estimator = 0.0;
+    state.progress.last_times = [0.0; 20];
+    state.progress.last_power_estimators = [0.0; 20];
+    state.progress.last_precursors_0 = [0.0; 20];
+    state.progress.last_precursors_1 = [0.0; 20];
+    state.progress.last_precursors_2 = [0.0; 20];
+    state.progress.last_precursors_3 = [0.0; 20];
+    state.progress.last_precursors_4 = [0.0; 20];
+    state.progress.last_precursors_5 = [0.0; 20];
+    state.time_multiplier = 1.0;
+    state.is_running = false;
+}
+
+#[derive(Debug, Clone)]
+enum Message {
+    Raz,
+    PlayPause, SlowDown, Faster,
+    Running,
+    Stop,
+    HugeUp, VeryBigUp, BigUp, Up, Down, BigDown, VeryBigDown, Scram,
+    AddOrRemoveExternalSource,
+    Nothing,
+}
+
+fn next_dt(system: &mut System) {
+    let old_system = System {
+        ..*system
+    };
+
+    let mut sum_lambda_f_p_f = 0.0;
+    for i in 0..old_system.precursors_pop.len() {
+        sum_lambda_f_p_f = sum_lambda_f_p_f + old_system.precursors_lambda[i]*old_system.precursors_pop[i];
+    }
+    let contrib_prompt = (old_system.reactivity - old_system.effective_beta)*old_system.k*old_system.neutron_pop/old_system.generation_time;
+    // println!("sum_lambda_f_p_f = {sum_lambda_f_p_f} ; contrib_prompt = {contrib_prompt}");
+
+    system.neutron_pop = old_system.neutron_pop + system.dt*(contrib_prompt + sum_lambda_f_p_f);
+    if system.external_source_is_in {
+        system.neutron_pop += system.external_source_activity*system.dt;
+    }
+    if system.neutron_pop < 0.0 {
+        system.neutron_pop = 0.0;
+    }
+
+    for i in 0..old_system.precursors_pop.len() {
+        system.precursors_pop[i] = old_system.precursors_pop[i] + system.dt*( old_system.effective_beta*old_system.precursors_proportion[i]*old_system.k*old_system.neutron_pop/old_system.generation_time - old_system.precursors_lambda[i]*old_system.precursors_pop[i]);
+    }
+    system.k = system.neutron_pop / old_system.neutron_pop;
+    system.reactivity = (system.k - 1.0)/system.k + system.rods + system.boric_acid + system.depletion;
+    system.current_time += system.dt;
+}
+
+fn build_power_estimator_curve(state: &mut Appstate) -> PlotWidget {
+    let power_curve = (0..20)
+        .map(|i| {let x = state.progress.last_times[i]; let y = state.progress.last_power_estimators[i]; [x, y]})
+        .collect();
+    let power_series = Series::markers_only(power_curve, MarkerStyle::circle(2.0))
+        .with_color(iced_plot::Color::from_rgb(0.9, 0.0, 0.0));
+    PlotWidgetBuilder::new()
+        .add_series(power_series)
+        .with_x_label("Time [s]")
+        .with_y_label("Estimated power [W]")
+        .with_x_scale(AxisScale::Log { base: E })
+        .with_y_scale(AxisScale::Log { base: E })
+        .with_x_tick_producer(|min, max| log_tick_producer(E, min, max))
+        .with_y_tick_producer(|min, max| log_tick_producer(E, min, max))
+        .with_x_tick_formatter(|t| log_formatter(t, E))
+        .with_y_tick_formatter(|t| log_formatter(t, E))
+        .build()
+        .unwrap()
+}
+
+fn build_precursors_curve(state: &mut Appstate) -> PlotWidget {
+
+    let mut pw = PlotWidgetBuilder::new();
+    let map = HashMap::from([
+        (0, state.progress.last_precursors_0),
+        (1, state.progress.last_precursors_1),
+        (2, state.progress.last_precursors_2),
+        (3, state.progress.last_precursors_3),
+        (4, state.progress.last_precursors_4),
+        (5, state.progress.last_precursors_5),
+    ]);
+    for (j,precursors_j) in &map {
+        let precursor_curve = (0..20)
+            .map(|i| {let x = state.progress.last_times[i]; let y = precursors_j[i]; [x, y]})
+            .collect();
+        let precursor_series = Series::markers_only(precursor_curve, MarkerStyle::circle(2.0))
+            .with_label(format!("{} family", j+1))
+            .with_color(iced_plot::Color::from_rgb((*j as f32)/6.0, (*j as f32)/6.0, (*j as f32)/6.0));
+        pw = pw.add_series(precursor_series);
+    }
+
+    pw
+        .with_x_label("Time [s]")
+        .with_y_label("Precursor population")
+        .with_x_scale(AxisScale::Log { base: E })
+        .with_y_scale(AxisScale::Log { base: E })
+        .with_x_tick_producer(|min, max| log_tick_producer(E, min, max))
+        .with_y_tick_producer(|min, max| log_tick_producer(E, min, max))
+        .with_x_tick_formatter(|t| log_formatter(t, E))
+        .with_y_tick_formatter(|t| log_formatter(t, E))
+        .build()
+        .unwrap()
+}
+
+fn update(state: &mut Appstate, message: Message) -> Task<Message> {
+    match message {
+        Message::Raz => {
+            reset_state(state);
+            Task::none()
+        },
+        Message::PlayPause => {
+            state.is_running = !state.is_running;
+            Task::none()
+        },
+        Message::Stop => {
+            exit()
+        },
+        Message::Running => {
+            println!("Running!");
+            let steps_per_25ms = (2500.0*state.time_multiplier) as isize;
+            let y_a = state.system.neutron_pop;
+            for _i in 0..steps_per_25ms {
+                next_dt(&mut state.system);
+            }
+
+            let y_b = state.system.neutron_pop;
+            if y_b < y_a {
+                state.system.doubling_time_estimator = 0.0;
+            }
+            else {
+                let a = (y_b - y_a)/(state.system.dt*(steps_per_25ms as f64));
+                state.system.doubling_time_estimator = y_a / a;
+            }
+            state.system.power_estimator = (state.system.neutron_pop/2.5)*200e6*1.6e-19*state.system.generation_time;
+            
+            state.progress.last_times.moveslice(1..20, 0);
+            state.progress.last_power_estimators.moveslice(1..20, 0);
+            state.progress.last_precursors_0.moveslice(1..20, 0);
+            state.progress.last_precursors_1.moveslice(1..20, 0);
+            state.progress.last_precursors_2.moveslice(1..20, 0);
+            state.progress.last_precursors_3.moveslice(1..20, 0);
+            state.progress.last_precursors_4.moveslice(1..20, 0);
+            state.progress.last_precursors_5.moveslice(1..20, 0);
+            state.progress.last_times[19] = state.system.current_time;
+            state.progress.last_power_estimators[19] = state.system.power_estimator;
+            state.progress.last_precursors_0[19] = state.system.precursors_pop[0];
+            state.progress.last_precursors_1[19] = state.system.precursors_pop[1];
+            state.progress.last_precursors_2[19] = state.system.precursors_pop[2];
+            state.progress.last_precursors_3[19] = state.system.precursors_pop[3];
+            state.progress.last_precursors_4[19] = state.system.precursors_pop[4];
+            state.progress.last_precursors_5[19] = state.system.precursors_pop[5];
+
+            state.power_estimator_curve_widget = build_power_estimator_curve(state);
+            state.precursors_curve_widget = build_precursors_curve(state);
+
+            if state.system.is_scraming {
+                if state.system.rods > -8750e-5 {
+                    state.system.rods -= 1250.0e-5;
+                } else if state.system.rods > -10000e-5 {
+                    state.system.rods = -10000e-5;
+                    state.system.is_scraming = false;
+                }
+            }
+            Task::none()
+        },
+        Message::HugeUp => {
+            state.system.rods += 1000e-5;
+            Task::none()
+        },  
+        Message::VeryBigUp => {
+            state.system.rods += 100e-5;
+            Task::none()
+        },  
+        Message::BigUp => {
+            state.system.rods += 10e-5;
+            Task::none()
+        },        
+        Message::Up => {
+            state.system.rods += 2e-5;
+            Task::none()
+        },
+        Message::Down => {
+            state.system.rods -= 2e-5;
+            Task::none()
+        },
+        Message::BigDown => {
+            state.system.rods -= 10e-5;
+            Task::none()
+        },
+        Message::VeryBigDown => {
+            state.system.rods -= 100e-5;
+            Task::none()
+        },
+        Message::Scram => {
+            state.system.is_scraming = true;
+            Task::none()
+        },
+        Message::AddOrRemoveExternalSource => {
+            state.system.external_source_is_in = !state.system.external_source_is_in;
+            Task::none()
+        }
+        Message::SlowDown => {
+            state.time_multiplier *= 0.5;
+            Task::none()
+        },
+        Message::Faster => {
+            state.time_multiplier *= 2.0;
+            Task::none()
+        },
+        Message::Nothing => {
+            Task::none()
+        }
+    }
+}
+
+impl<Message> canvas::Program<Message> for Appstate {
+    // No internal state
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &Renderer,
+        _theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor
+    ) -> Vec<canvas::Geometry> {
+        // We prepare a new `Frame`
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        // // We create a `Path` representing a simple circle
+        // let circle = canvas::Path::circle(frame.center(), 10.0);
+        // // And fill it with some color
+        // frame.fill(&circle, Color::BLACK);
+        
+        let origin = frame.center();
+        let x0 = origin.x;
+        // let y0 = origin.y;
+        let canvas_h = bounds.size().height;
+        let canvas_w = bounds.size().width;
+        // println!("Draw! - origin: {0} {1} ; size {2} {3} ", x0, y0, bounds.size().width, bounds.size().height);
+        let unit_h_pc = bounds.size().height / 100.0;
+        let unit_w_pc = bounds.size().width / 100.0;
+
+        // reactor vessel
+        let vessel = canvas::Path::rectangle(
+            Point {x: 0.0, y: 0.0}, 
+            Size {width: canvas_w, height: canvas_h}
+        );
+        frame.fill(&vessel, Color::from_rgb(0.9, 0.9, 0.9));
+
+        // water
+        let water = canvas::Path::rectangle(
+            Point {x: 2.0*unit_w_pc, y: 2.0*unit_h_pc},
+            Size {width: 96.0*unit_w_pc, height: 96.0*unit_h_pc}
+        );
+        let water_color = if self.system.boric_acid > 5000.0e-5 {
+            Color::from_rgb(0.0/255.0, 191.0/255.0, 255.0/255.0)
+        } else {
+            Color::from_rgb(135.0/255.0, 206.0/255.0, 250.0/255.0)
+        };
+        frame.fill(&water, water_color);
+
+        // clad
+        let clad_0 = canvas::Path::rectangle(
+            Point {x: x0 - 25.0*unit_w_pc, y: 50.0*unit_h_pc},
+            Size {width: 12.0*unit_w_pc, height: 40.0*unit_h_pc}
+        );
+        let clad_1 = canvas::Path::rectangle(
+            Point {x: x0 - 6.0*unit_w_pc, y: 50.0*unit_h_pc},
+            Size {width: 12.0*unit_w_pc, height: 40.0*unit_h_pc}
+        );
+        let clad_2 = canvas::Path::rectangle(
+            Point {x: x0 + 13.0*unit_w_pc, y: 50.0*unit_h_pc},
+            Size {width: 12.0*unit_w_pc, height: 40.0*unit_h_pc}
+        );
+        let clad_color = Color::from_rgb(0.6, 0.6, 0.6);
+        frame.fill(&clad_0, clad_color);
+        frame.fill(&clad_1, clad_color);
+        frame.fill(&clad_2, clad_color);
+
+        // fuel
+        let fuel_0 = canvas::Path::rectangle(
+            Point {x: x0 - 24.0*unit_w_pc, y: 51.0*unit_h_pc},
+            Size {width: 10.0*unit_w_pc, height: 38.0*unit_h_pc}
+        );
+        let fuel_1 = canvas::Path::rectangle(
+            Point {x: x0 - 5.0*unit_w_pc, y: 51.0*unit_h_pc},
+            Size {width: 10.0*unit_w_pc, height: 38.0*unit_h_pc}
+        );
+        let fuel_2 = canvas::Path::rectangle(
+            Point {x: x0 + 14.0*unit_w_pc, y: 51.0*unit_h_pc},
+            Size {width: 10.0*unit_w_pc, height: 38.0*unit_h_pc}
+        );
+        let fuel_color_intensity = ((self.system.depletion as f32)*1e5 + 500.0)/20500.0;
+        let fuel_color = Color::from_rgb(0.0, 0.3+ 0.6*fuel_color_intensity, 0.0);
+        frame.fill(&fuel_0, fuel_color);
+        frame.fill(&fuel_1, fuel_color);
+        frame.fill(&fuel_2, fuel_color);
+
+
+        let rod_h = 40.0 * unit_h_pc;
+        let rod_w = 5.0 * unit_w_pc;
+
+        // control rods
+        let rods_top = 0.0 -(self.system.rods as f32)*1e5/10000.0*50.0*unit_h_pc;
+        // println!("Draw! - rods top = {0}", rods_top);
+        let rod_0_xshift = -10.0*unit_w_pc;
+        let rod_1_xshift = 10.0*unit_w_pc;
+
+        let rod_0 = canvas::Path::rectangle(
+            Point {x: x0 + rod_0_xshift - rod_w/2.0, y: rods_top}, 
+            Size {width: rod_w, height: rod_h}
+        );
+        let rod_1 = canvas::Path::rectangle(
+            Point {x: x0 + rod_1_xshift - rod_w/2.0, y: rods_top}, 
+            Size {width: rod_w , height: rod_h}
+        );
+        frame.fill(&rod_0, Color::BLACK);
+        frame.fill(&rod_1, Color::BLACK);
+
+        if self.system.external_source_is_in {
+            let source = canvas::Path::rectangle(
+                Point {x:x0 - 2.0*unit_w_pc, y: 93.0*unit_h_pc}, 
+                Size {width: 4.0*unit_w_pc, height: 4.0*unit_h_pc}
+            );
+            frame.fill(&source, Color::from_rgb(1.0, 172.0/255.0, 28.0/255.0));
+        }
+
+        // Then, we produce the geometry
+        vec![frame.into_geometry()]
+    }
+}
+
+fn view(state: &Appstate) -> Element<'_, Message> {
+    let precursors_total_pop: f64 = state.system.precursors_pop.iter().sum();
+    column![
+        row![
+            column![
+                text(format!("Time [s] (x{:.2})", state.time_multiplier)).size(20),
+                text("Power estimate [W]").size(20),
+                text("Neutron population").size(20),
+                text("Precursor population").size(20),
+                text("Reactivity").size(20),
+                text("β eff").size(20),
+                text("Doubling time [s]").size(20),
+            ].spacing(5),
+            column![
+                text(format!("{:.2}", state.system.current_time)).size(20),
+                text(format!("{:.2e}", state.system.power_estimator)).size(20),
+                text(format!("{:.3e}", state.system.neutron_pop)).size(20),
+                text(format!("{:.3e}", precursors_total_pop)).size(20),
+                text(format!("{:.5}", state.system.reactivity)).size(20),
+                text(format!("{:.5}", state.system.effective_beta)).size(20),
+                text(format!("{:.1}", state.system.doubling_time_estimator)).size(20),
+            ].spacing(5),
+            column![
+                row![
+                    button("RAZ").on_press(Message::Raz),
+                    button("<<").on_press(Message::SlowDown),
+                    button("▶⏸").on_press(Message::PlayPause),
+                    button(">>").on_press(Message::Faster),
+                ],
+                text("External source activity").size(20),
+                text("Rods").size(20),
+                text("Boric acid").size(20),
+                text("Depletion").size(20),
+            ].spacing(5),
+            column![
+                button("⏹").on_press(Message::Stop),
+                text(format!("{:.3e} Bq", if state.system.external_source_is_in {state.system.external_source_activity} else {0.0})).size(20),
+                text(format!("{:.5}", state.system.rods)).size(20),
+                text(format!("{:.5}", state.system.boric_acid)).size(20),
+                text(format!("{:.5}", state.system.depletion)).size(20),
+            ].spacing(5),
+        ].spacing(40),
+        row![
+            column![
+                canvas(state).width(400).height(400)
+            ],
+            column![
+                button("↑↑↑↑").on_press(Message::HugeUp),
+                button("↑↑↑").on_press(Message::VeryBigUp),
+                button("↑↑").on_press(Message::BigUp),
+                button("↑").on_press(Message::Up),
+                button("↓").on_press(Message::Down),
+                button("↓↓").on_press(Message::BigDown),
+                button("↓↓↓").on_press(Message::VeryBigDown),
+                button("SCRAM").on_press(Message::Scram),
+                button("Add / Remove\nexternal source").on_press(Message::AddOrRemoveExternalSource),
+            ].spacing(5),
+        ],
+        // row![
+        //     state.power_estimator_curve_widget.view().map(|_| Message::Nothing),
+        //     state.precursors_curve_widget.view().map(|_| Message::Nothing),
+        // ]
+    ]
+    .into()
+}
+
+fn _subscription(state: &Appstate) -> Subscription<Message> {
+    println!("parsing subscription");
+    if state.is_running {
+        time::every(Duration::from_millis(25)).map(|_| Message::Running)
+    } else {
+        Subscription::none()
+    }
+}
+pub fn run_app() -> iced::Result {
+    iced::application(Appstate::default, update, view)
+        .subscription(_subscription)
+        .run()
+}
