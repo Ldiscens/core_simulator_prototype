@@ -175,7 +175,7 @@ impl eframe::App for UiState {
                     )
                     .custom_y_axes(vec![
                         AxisHints::new_y()
-                            .label("Power [s]")
+                            .label("Power [W]")
                             .formatter(|mark: GridMark, _range: &RangeInclusive<f64>| {
                                     format!("{:.2e}", mark.value)
                                 }
@@ -224,14 +224,34 @@ fn draw_reactor(state: &mut UiState, ui: &mut egui::Ui, xsize:f32, ysize:f32) ->
 
     //clad
     painter.rect(
+        get_rect(xmin+25.0*x_pc, ymin+50.0*y_pc, 12.0*x_pc, 40.0*y_pc), 0.0,
+        egui::Color32::GRAY,
+        egui::Stroke::NONE, egui::StrokeKind::Inside,
+    );
+    painter.rect(
         get_rect(xmin+44.0*x_pc, ymin+50.0*y_pc, 12.0*x_pc, 40.0*y_pc), 0.0,
+        egui::Color32::GRAY,
+        egui::Stroke::NONE, egui::StrokeKind::Inside,
+    );
+    painter.rect(
+        get_rect(xmin+63.0*x_pc, ymin+50.0*y_pc, 12.0*x_pc, 40.0*y_pc), 0.0,
         egui::Color32::GRAY,
         egui::Stroke::NONE, egui::StrokeKind::Inside,
     );
 
     //fuel
     painter.rect(
+        get_rect(xmin+26.0*x_pc, ymin+51.0*y_pc, 10.0*x_pc, 38.0*y_pc), 0.0,
+        egui::Color32::GREEN,
+        egui::Stroke::NONE, egui::StrokeKind::Inside,
+    );
+    painter.rect(
         get_rect(xmin+45.0*x_pc, ymin+51.0*y_pc, 10.0*x_pc, 38.0*y_pc), 0.0,
+        egui::Color32::GREEN,
+        egui::Stroke::NONE, egui::StrokeKind::Inside,
+    );
+    painter.rect(
+        get_rect(xmin+64.0*x_pc, ymin+51.0*y_pc, 10.0*x_pc, 38.0*y_pc), 0.0,
         egui::Color32::GREEN,
         egui::Stroke::NONE, egui::StrokeKind::Inside,
     );
@@ -242,6 +262,19 @@ fn draw_reactor(state: &mut UiState, ui: &mut egui::Ui, xsize:f32, ysize:f32) ->
         egui::Color32::BLACK,
         egui::Stroke::NONE, egui::StrokeKind::Inside,
     );
+    painter.rect(
+        get_rect(xmin+57.0*x_pc, rods_top, 5.0*x_pc, 40.0*y_pc), 0.0,
+        egui::Color32::BLACK,
+        egui::Stroke::NONE, egui::StrokeKind::Inside,
+    );
+
+    if state.system.external_source_is_in {
+        painter.rect(
+            get_rect(xmin+48.0*x_pc, ymin+93.0*y_pc, 4.0*x_pc, 4.0*y_pc), 0.0,
+            egui::Color32::ORANGE,
+            egui::Stroke::NONE, egui::StrokeKind::Inside,
+        );
+    }
     response
 }
 
