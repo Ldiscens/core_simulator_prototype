@@ -83,6 +83,19 @@ fn do_real_time_25ms(state: &mut UiState) {
 impl eframe::App for UiState {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let text_styles: std::collections::BTreeMap<_, _> = [
+            (egui::TextStyle::Heading, egui::FontId::new(30.0, egui::FontFamily::Monospace)),
+            (egui::TextStyle::Name("Heading2".into()), egui::FontId::new(25.0, egui::FontFamily::Monospace)),
+            (egui::TextStyle::Name("Context".into()), egui::FontId::new(23.0, egui::FontFamily::Monospace)),
+            (egui::TextStyle::Body, egui::FontId::new(16.0, egui::FontFamily::Monospace)),
+            (egui::TextStyle::Monospace, egui::FontId::new(14.0, egui::FontFamily::Monospace)),
+            (egui::TextStyle::Button, egui::FontId::new(14.0, egui::FontFamily::Monospace)),
+            (egui::TextStyle::Small, egui::FontId::new(10.0, egui::FontFamily::Monospace)),
+        ].into();
+
+        // Mutate global styles with new text styles
+        ui.all_styles_mut(move |style| style.text_styles = text_styles.clone());
+
         if self.is_running {
             do_real_time_25ms(self);
             ui.request_repaint();
@@ -118,6 +131,25 @@ impl eframe::App for UiState {
                     }
                 );
                 ui.horizontal(|ui| {
+                        egui::Frame::canvas(ui.style())
+                        .show(ui, |ui| {
+                                draw_reactor(self, ui, 400.0, 400.0);
+                            }
+                        );
+                        let button_size = egui::Vec2{x:80.0, y:30.0};
+                        ui.vertical(|ui| {
+                                if ui.add(egui::Button::new("↑↑↑↑").min_size(button_size)).clicked() {self.system.rods += 1000e-5;}
+                                if ui.add(egui::Button::new("↑↑↑").min_size(button_size)).clicked() {self.system.rods += 100e-5;}
+                                if ui.add(egui::Button::new("↑↑").min_size(button_size)).clicked() {self.system.rods += 10e-5;}
+                                if ui.add(egui::Button::new("↑").min_size(button_size)).clicked() {self.system.rods += 2e-5;}
+                                if ui.add(egui::Button::new("↓").min_size(button_size)).clicked() {self.system.rods -= 2e-5;}
+                                if ui.add(egui::Button::new("↓↓").min_size(button_size)).clicked() {self.system.rods -= 10e-5;}
+                                if ui.add(egui::Button::new("↓↓↓").min_size(button_size)).clicked() {self.system.rods -= 100e-5;}
+                                if ui.add(egui::Button::new("↓↓↓↓").min_size(button_size)).clicked() {self.system.rods -= 1000e-5;}
+                                if ui.add(egui::Button::new("SCRAM").min_size(button_size)).clicked() {self.system.is_scraming =true;}
+                                if ui.add(egui::Button::new("Add /\nRemove\nsource").min_size(button_size)).clicked() {self.system.external_source_is_in = !self.system.external_source_is_in;}
+                            }
+                        );
                         ui.vertical(|ui| {
                                 ui.label("Power estimate [W]");
                                 ui.label("Neutron population");
@@ -125,7 +157,7 @@ impl eframe::App for UiState {
                                 ui.label("Reactivity");
                                 ui.label("β eff");
                                 ui.label("Doubling time [s]");
-                                ui.label("External source activity [Bq]");
+                                ui.label("Ext. source activity [Bq]");
                                 ui.label("Boric acid");
                                 ui.label("Depletion");
                                 ui.label("Rods");
@@ -144,27 +176,8 @@ impl eframe::App for UiState {
                                 ui.label(format!("{:.5}", self.system.rods));
                             }
                         );
-                        ui.vertical(|ui| {
-                                if ui.add(egui::Button::new("↑↑↑↑")).clicked() {self.system.rods += 1000e-5;}
-                                if ui.add(egui::Button::new("↑↑↑")).clicked() {self.system.rods += 100e-5;}
-                                if ui.add(egui::Button::new("↑↑")).clicked() {self.system.rods += 10e-5;}
-                                if ui.add(egui::Button::new("↑")).clicked() {self.system.rods += 2e-5;}
-                                if ui.add(egui::Button::new("↓")).clicked() {self.system.rods -= 2e-5;}
-                                if ui.add(egui::Button::new("↓↓")).clicked() {self.system.rods -= 10e-5;}
-                                if ui.add(egui::Button::new("↓↓↓")).clicked() {self.system.rods -= 100e-5;}
-                                if ui.add(egui::Button::new("↓↓↓↓")).clicked() {self.system.rods -= 1000e-5;}
-                                if ui.add(egui::Button::new("SCRAM")).clicked() {self.system.is_scraming =true;}
-                                if ui.add(egui::Button::new("Add / Remove source")).clicked() {self.system.external_source_is_in = !self.system.external_source_is_in;}
-                            }
-                        );
                     }
                 );
-
-                egui::Frame::canvas(ui.style())
-                    .show(ui, |ui| {
-                            draw_reactor(self, ui, 400.0, 500.0);
-                        }
-                    );
 
                 Plot::new("power_plot")
                     .show_axes(true)
@@ -211,7 +224,7 @@ fn draw_reactor(state: &mut UiState, ui: &mut egui::Ui, xsize:f32, ysize:f32) ->
     //vessel
     painter.rect(
         get_rect(xmin, ymin, xmax-xmin, ymax-ymin), 0.0,
-        egui::Color32::LIGHT_GRAY,
+        egui::Color32::DARK_GRAY,
         egui::Stroke::NONE, egui::StrokeKind::Inside,
     );
 
