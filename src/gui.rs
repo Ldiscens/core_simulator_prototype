@@ -1,5 +1,7 @@
+use std::ops::RangeInclusive;
 use eframe::egui;
 use crate::system::{System, reset_system, next_dt};
+use egui_plot::{Plot, Legend, PlotPoints, Points, AxisHints, GridMark};
 
 struct Progress {
     time: Vec<f64>,
@@ -8,9 +10,9 @@ struct Progress {
 
 impl Default for Progress {
     fn default() -> Self {
-        let mut time = Vec::with_capacity(100);
+        let mut time = Vec::with_capacity(1000);
         time.push(0.0);
-        let mut power = Vec::with_capacity(100);
+        let mut power = Vec::with_capacity(1000);
         power.push(0.0);
         Self {
             time: time,
@@ -72,9 +74,9 @@ fn do_real_time_25ms(state: &mut UiState) {
 
     state.progress.time.push(state.system.current_time);
     state.progress.power.push(state.system.power_estimator);
-    if state.progress.time.len() == 100 {
-        state.progress.time.drain(..80);
-        state.progress.power.drain(..80);
+    if state.progress.time.len() == 1000 {
+        state.progress.time.drain(..800);
+        state.progress.power.drain(..800);
     }
 }
 
@@ -157,10 +159,51 @@ impl eframe::App for UiState {
                         );
                     }
                 );
+                Plot::new("power_plot")
+                    .show_axes(true)
+                    .custom_x_axes(vec![
+                        AxisHints::new_x()
+                            .label("Time [s]")
+                        ]
+                    )
+                    .custom_y_axes(vec![
+                        AxisHints::new_y()
+                            .label("Power [s]")
+                            .formatter(|mark: GridMark, _range: &RangeInclusive<f64>| {
+                                    format!("{:.2e}", mark.value)
+                                }
+                            )
+                        ]
+                    )
+                    .show(ui, |plot_ui| {
+                            plot_ui.points(
+                                Points::new("markers", 
+                                    (0..self.progress.time.len())
+                                    .map(|i| {let x = self.progress.time[i]; let y = self.progress.power[i]; [x, y]})
+                                    .collect::<Vec<_>>()
+                                )
+                            )
+                        }
+                    )
+                    .response
             }
         );
     }
+
+    // fn plot(&mut self, ui: &mut egui::Ui) {
+    //     let mut plot = Plot::new()
+    //         .legend(Legend::default())
+    //         .show_axes(true)
+    //         .show_grid(true)
+
+    //     let power_points = Points::new("markers", 
+    //         (0..self.progress.time.len())
+    //         .map(|i| {let x = self.progress.times[i]; let y = self.progress.power[i]; [x, y]}).collect()
+    //     );
+    // }
 }
+
+
 
 pub fn run_ui() {
     let native_options = eframe::NativeOptions::default();
