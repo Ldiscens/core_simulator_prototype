@@ -159,6 +159,13 @@ impl eframe::App for UiState {
                         );
                     }
                 );
+
+                egui::Frame::canvas(ui.style())
+                    .show(ui, |ui| {
+                            draw_reactor(self, ui, 400.0, 500.0);
+                        }
+                    );
+
                 Plot::new("power_plot")
                     .show_axes(true)
                     .custom_x_axes(vec![
@@ -185,25 +192,71 @@ impl eframe::App for UiState {
                             )
                         }
                     )
-                    .response
+                    .response;
+                
             }
         );
     }
-
-    // fn plot(&mut self, ui: &mut egui::Ui) {
-    //     let mut plot = Plot::new()
-    //         .legend(Legend::default())
-    //         .show_axes(true)
-    //         .show_grid(true)
-
-    //     let power_points = Points::new("markers", 
-    //         (0..self.progress.time.len())
-    //         .map(|i| {let x = self.progress.times[i]; let y = self.progress.power[i]; [x, y]}).collect()
-    //     );
-    // }
 }
 
+fn draw_reactor(state: &mut UiState, ui: &mut egui::Ui, xsize:f32, ysize:f32) -> egui::Response {
+    let (mut response, painter) = ui.allocate_painter(egui::Vec2 {x:xsize, y:ysize}, egui::Sense::focusable_noninteractive());
+    let xmin = response.rect.min.x;
+    let ymin = response.rect.min.y;
+    let xmax = response.rect.max.x;
+    let ymax = response.rect.max.y;
+    let x_pc = (xmax - xmin)/100.0;
+    let y_pc = (ymax - ymin)/100.0;
 
+    //vessel
+    painter.rect(
+        get_rect(xmin, ymin, xmax-xmin, ymax-ymin), 0.0,
+        egui::Color32::LIGHT_GRAY,
+        egui::Stroke::NONE, egui::StrokeKind::Inside,
+    );
+
+    //water
+    painter.rect(
+        get_rect(xmin+2.0*x_pc, ymin+2.0*y_pc, 96.0*x_pc, 96.0*y_pc), 0.0,
+        egui::Color32::LIGHT_BLUE,
+        egui::Stroke::NONE, egui::StrokeKind::Inside,
+    );
+
+    //clad
+    painter.rect(
+        get_rect(xmin+44.0*x_pc, ymin+50.0*y_pc, 12.0*x_pc, 40.0*y_pc), 0.0,
+        egui::Color32::GRAY,
+        egui::Stroke::NONE, egui::StrokeKind::Inside,
+    );
+
+    //fuel
+    painter.rect(
+        get_rect(xmin+45.0*x_pc, ymin+51.0*y_pc, 10.0*x_pc, 38.0*y_pc), 0.0,
+        egui::Color32::GREEN,
+        egui::Stroke::NONE, egui::StrokeKind::Inside,
+    );
+
+    let rods_top = ymin -(state.system.rods as f32)*1e5/10000.0*50.0*y_pc;
+    painter.rect(
+        get_rect(xmin+38.0*x_pc, rods_top, 5.0*x_pc, 40.0*y_pc), 0.0,
+        egui::Color32::BLACK,
+        egui::Stroke::NONE, egui::StrokeKind::Inside,
+    );
+    response
+}
+
+pub fn get_rect(x0: f32, y0: f32, w: f32, h: f32) -> egui::Rect {
+    egui::Rect{
+        min: egui::Pos2 {
+            x: x0,
+            y: y0,
+        },
+        max: egui::Pos2 {
+            x: x0+w,
+            y: y0+h,
+        },
+    }
+}
 
 pub fn run_ui() {
     let native_options = eframe::NativeOptions::default();
