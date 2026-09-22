@@ -6,17 +6,41 @@ use egui_plot::{Plot, Legend, PlotPoints, Points, AxisHints, GridMark};
 struct Progress {
     time: Vec<f64>,
     power: Vec<f64>,
+    precursors_pop_0: Vec<f64>,
+    precursors_pop_1: Vec<f64>,
+    precursors_pop_2: Vec<f64>,
+    precursors_pop_3: Vec<f64>,
+    precursors_pop_4: Vec<f64>,
+    precursors_pop_5: Vec<f64>,
 }
 
 impl Default for Progress {
     fn default() -> Self {
         let mut time = Vec::with_capacity(1000);
-        time.push(0.0);
         let mut power = Vec::with_capacity(1000);
+        let mut precursors_pop_0 = Vec::with_capacity(1000);
+        let mut precursors_pop_1 = Vec::with_capacity(1000);
+        let mut precursors_pop_2 = Vec::with_capacity(1000);
+        let mut precursors_pop_3 = Vec::with_capacity(1000);
+        let mut precursors_pop_4 = Vec::with_capacity(1000);
+        let mut precursors_pop_5 = Vec::with_capacity(1000);
+        time.push(0.0);
         power.push(0.0);
+        precursors_pop_0.push(0.0);
+        precursors_pop_1.push(0.0);
+        precursors_pop_2.push(0.0);
+        precursors_pop_3.push(0.0);
+        precursors_pop_4.push(0.0);
+        precursors_pop_5.push(0.0);
         Self {
             time: time,
             power: power,
+            precursors_pop_0: precursors_pop_0,
+            precursors_pop_1: precursors_pop_1,
+            precursors_pop_2: precursors_pop_2,
+            precursors_pop_3: precursors_pop_3,
+            precursors_pop_4: precursors_pop_4,
+            precursors_pop_5: precursors_pop_5,
         }
     }
 }
@@ -74,9 +98,21 @@ fn do_real_time_25ms(state: &mut UiState) {
 
     state.progress.time.push(state.system.current_time);
     state.progress.power.push(state.system.power_estimator);
+    state.progress.precursors_pop_0.push(state.system.precursors_pop[0]);
+    state.progress.precursors_pop_1.push(state.system.precursors_pop[1]);
+    state.progress.precursors_pop_2.push(state.system.precursors_pop[2]);
+    state.progress.precursors_pop_3.push(state.system.precursors_pop[3]);
+    state.progress.precursors_pop_4.push(state.system.precursors_pop[4]);
+    state.progress.precursors_pop_5.push(state.system.precursors_pop[5]);
     if state.progress.time.len() == 1000 {
         state.progress.time.drain(..800);
         state.progress.power.drain(..800);
+        state.progress.precursors_pop_0.drain(..800);
+        state.progress.precursors_pop_1.drain(..800);
+        state.progress.precursors_pop_2.drain(..800);
+        state.progress.precursors_pop_3.drain(..800);
+        state.progress.precursors_pop_4.drain(..800);
+        state.progress.precursors_pop_5.drain(..800);
     }
 }
 
@@ -178,35 +214,105 @@ impl eframe::App for UiState {
                         );
                     }
                 );
-
-                Plot::new("power_plot")
-                    .show_axes(true)
-                    .custom_x_axes(vec![
-                        AxisHints::new_x()
-                            .label("Time [s]")
-                        ]
-                    )
-                    .custom_y_axes(vec![
-                        AxisHints::new_y()
-                            .label("Power [W]")
-                            .formatter(|mark: GridMark, _range: &RangeInclusive<f64>| {
-                                    format!("{:.2e}", mark.value)
-                                }
-                            )
-                        ]
-                    )
-                    .show(ui, |plot_ui| {
-                            plot_ui.points(
-                                Points::new("markers", 
-                                    (0..self.progress.time.len())
-                                    .map(|i| {let x = self.progress.time[i]; let y = self.progress.power[i]; [x, y]})
-                                    .collect::<Vec<_>>()
+                ui.horizontal(|ui| {
+                    Plot::new("power_plot")
+                        .show_axes(true)
+                        .custom_x_axes(vec![
+                            AxisHints::new_x()
+                                .label("Time [s]")
+                            ]
+                        )
+                        .custom_y_axes(vec![
+                            AxisHints::new_y()
+                                .label("Power [W]")
+                                .formatter(|mark: GridMark, _range: &RangeInclusive<f64>| {
+                                        format!("{:.2e}", mark.value)
+                                    }
                                 )
-                            )
-                        }
-                    )
-                    .response;
-                
+                            ]
+                        )
+                        .width(400.0)
+                        .height(300.0)
+                        .show(ui, |plot_ui| {
+                                plot_ui.points(
+                                    Points::new("markers", 
+                                        (0..self.progress.time.len())
+                                        .map(|i| {let x = self.progress.time[i]; let y = self.progress.power[i]; [x, y]})
+                                        .collect::<Vec<_>>()
+                                    )
+                                )
+                            }
+                        );
+                    Plot::new("precursor_plot")
+                        .show_axes(true)
+                        .custom_x_axes(vec![
+                            AxisHints::new_x()
+                                .label("Time [s]")
+                            ]
+                        )
+                        .custom_y_axes(vec![
+                            AxisHints::new_y()
+                                .label("Population")
+                                .formatter(|mark: GridMark, _range: &RangeInclusive<f64>| {
+                                        format!("{:.2e}", mark.value)
+                                    }
+                                )
+                            ]
+                        )
+                        .width(400.0)
+                        .height(300.0)
+                        .legend(
+                            Legend::default()
+                                .position(egui_plot::Corner::LeftTop)
+                                .title("Family")
+                        )
+                        .show(ui, |plot_ui| {
+                                plot_ui.points(
+                                    Points::new("0", 
+                                        (0..self.progress.time.len())
+                                        .map(|i| {let x = self.progress.time[i]; let y = self.progress.precursors_pop_0[i]; [x, y]})
+                                        .collect::<Vec<_>>()
+                                    )
+                                );
+                                plot_ui.points(
+                                    Points::new("1", 
+                                        (0..self.progress.time.len())
+                                        .map(|i| {let x = self.progress.time[i]; let y = self.progress.precursors_pop_1[i]; [x, y]})
+                                        .collect::<Vec<_>>()
+                                    )
+                                );
+                                plot_ui.points(
+                                    Points::new("2", 
+                                        (0..self.progress.time.len())
+                                        .map(|i| {let x = self.progress.time[i]; let y = self.progress.precursors_pop_2[i]; [x, y]})
+                                        .collect::<Vec<_>>()
+                                    )
+                                );
+                                plot_ui.points(
+                                    Points::new("3", 
+                                        (0..self.progress.time.len())
+                                        .map(|i| {let x = self.progress.time[i]; let y = self.progress.precursors_pop_3[i]; [x, y]})
+                                        .collect::<Vec<_>>()
+                                    )
+                                );
+                                plot_ui.points(
+                                    Points::new("4", 
+                                        (0..self.progress.time.len())
+                                        .map(|i| {let x = self.progress.time[i]; let y = self.progress.precursors_pop_4[i]; [x, y]})
+                                        .collect::<Vec<_>>()
+                                    )
+                                );
+                                plot_ui.points(
+                                    Points::new("5", 
+                                        (0..self.progress.time.len())
+                                        .map(|i| {let x = self.progress.time[i]; let y = self.progress.precursors_pop_5[i]; [x, y]})
+                                        .collect::<Vec<_>>()
+                                    )
+                                );
+                            }
+                        );
+                    }
+                );
             }
         );
     }
