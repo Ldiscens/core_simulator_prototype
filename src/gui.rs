@@ -169,7 +169,7 @@ impl eframe::App for UiState {
                 ui.horizontal(|ui| {
                         egui::Frame::canvas(ui.style())
                         .show(ui, |ui| {
-                                draw_reactor(self, ui, 400.0, 400.0);
+                                draw_reactor(self, ui, 400.0, 500.0);
                             }
                         );
                         let button_size = egui::Vec2{x:80.0, y:30.0};
@@ -184,6 +184,8 @@ impl eframe::App for UiState {
                                 if ui.add(egui::Button::new("↓↓↓↓").min_size(button_size)).clicked() {self.system.rods -= 1000e-5;}
                                 if ui.add(egui::Button::new("SCRAM").min_size(button_size)).clicked() {self.system.is_scraming =true;}
                                 if ui.add(egui::Button::new("Add /\nRemove\nsource").min_size(button_size)).clicked() {self.system.external_source_is_in = !self.system.external_source_is_in;}
+                                if ui.add(egui::Button::new("Start/\nStop\ndepletion").min_size(button_size)).clicked() {self.system.is_depleting = !self.system.is_depleting;}
+                                if ui.add(egui::Button::new("Unborated\nwater\ninjection").min_size(button_size)).clicked() {self.system.boric_acid += 20e-5;}
                             }
                         );
                         ui.vertical(|ui| {
@@ -231,8 +233,8 @@ impl eframe::App for UiState {
                                 )
                             ]
                         )
-                        .width(400.0)
-                        .height(300.0)
+                        .width(450.0)
+                        .height(350.0)
                         .show(ui, |plot_ui| {
                                 plot_ui.points(
                                     Points::new("markers", 
@@ -252,15 +254,15 @@ impl eframe::App for UiState {
                         )
                         .custom_y_axes(vec![
                             AxisHints::new_y()
-                                .label("Population")
+                                .label("Precursor population")
                                 .formatter(|mark: GridMark, _range: &RangeInclusive<f64>| {
                                         format!("{:.2e}", mark.value)
                                     }
                                 )
                             ]
                         )
-                        .width(400.0)
-                        .height(300.0)
+                        .width(450.0)
+                        .height(350.0)
                         .legend(
                             Legend::default()
                                 .position(egui_plot::Corner::LeftTop)

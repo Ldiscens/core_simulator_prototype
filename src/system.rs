@@ -14,8 +14,9 @@ pub struct System {
     pub depletion: f64,
     pub dt: f64,
     pub current_time: f64,
-    pub external_source_activity: f64,    
+    pub external_source_activity: f64,
     pub is_scraming: bool,
+    pub is_depleting: bool,
     pub external_source_is_in: bool,    
     pub doubling_time_estimator: f64,
     pub power_estimator: f64,
@@ -30,12 +31,13 @@ pub fn reset_system(system: &mut System) {
     system.precursors_proportion = [0.033, 0.219, 0.196, 0.395, 0.115, 0.042];
     system.precursors_lambda = [1.0/55.9, 1.0/22.7, 1.0/6.24, 1.0/2.3, 1.0/0.61, 1.0/0.23];
     system.precursors_pop = [0.0; 6];
-    system.rods = -5500.0e-5;
+    system.rods = -5000.0e-5;
     system.boric_acid = -15000.0e-5;
     system.depletion = 20000.0e-5;
     system.dt = 1e-5;
     system.current_time = 0.0;
     system.is_scraming = false;
+    system.is_depleting = false;
     system.external_source_is_in = true;
     system.external_source_activity = 6.335e11 * 0.1; //100mg of Pu238
     system.doubling_time_estimator = 0.0;
@@ -68,5 +70,8 @@ pub fn next_dt(system: &mut System) {
     }
     system.k = system.neutron_pop / old_system.neutron_pop;
     system.reactivity = (system.k - 1.0)/system.k + system.rods + system.boric_acid + system.depletion;
+    if system.is_depleting {
+        system.depletion -= 1.0*1e-5*system.dt; //1.0 pcm/s
+    }
     system.current_time += system.dt;
 }
