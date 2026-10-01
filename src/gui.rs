@@ -2,6 +2,8 @@ use std::ops::RangeInclusive;
 use eframe::egui;
 use crate::system::{System, reset_system, next_dt};
 use egui_plot::{Plot, Legend, PlotPoints, Points, AxisHints, GridMark};
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Write};
 
 struct Progress {
     time: Vec<f64>,
@@ -12,6 +14,7 @@ struct Progress {
     precursors_pop_3: Vec<f64>,
     precursors_pop_4: Vec<f64>,
     precursors_pop_5: Vec<f64>,
+    file_name: String,
 }
 
 impl Default for Progress {
@@ -32,6 +35,9 @@ impl Default for Progress {
         precursors_pop_3.push(0.0);
         precursors_pop_4.push(0.0);
         precursors_pop_5.push(0.0);
+        let file_name = "progress.csv";
+        let mut file = File::create(file_name).expect("Failed to create progress file");
+        writeln!(file, "Time[s],Power[W],Precursors_0,Precursors_1,Precursors_2,Precursors_3,Precursors_4,Precursors_5");
         Self {
             time: time,
             power: power,
@@ -41,6 +47,7 @@ impl Default for Progress {
             precursors_pop_3: precursors_pop_3,
             precursors_pop_4: precursors_pop_4,
             precursors_pop_5: precursors_pop_5,
+            file_name: file_name.to_string(),
         }
     }
 }
@@ -105,6 +112,20 @@ fn do_real_time_25ms(state: &mut UiState) {
     state.progress.precursors_pop_4.push(state.system.precursors_pop[4]);
     state.progress.precursors_pop_5.push(state.system.precursors_pop[5]);
     if state.progress.time.len() == 1000 {
+        let mut f = OpenOptions::new().append(true).open(&state.progress.file_name).expect("failed to open progress");
+        let mut buffer = BufWriter::new(f);
+        for j in 0..800 {
+            write!(buffer, "{:.5e},{:.5e},{:.5e},{:.5e},{:.5e},{:.5e},{:.5e},{:.5e}\n", 
+                state.progress.time[j],
+                state.progress.power[j],
+                state.progress.precursors_pop_0[j],
+                state.progress.precursors_pop_1[j],
+                state.progress.precursors_pop_2[j],
+                state.progress.precursors_pop_3[j],
+                state.progress.precursors_pop_4[j],
+                state.progress.precursors_pop_5[j]
+            );
+        }
         state.progress.time.drain(..800);
         state.progress.power.drain(..800);
         state.progress.precursors_pop_0.drain(..800);
