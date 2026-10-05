@@ -181,7 +181,7 @@ impl eframe::App for UiState {
                             .clicked() {
                                 self.time_multiplier *= 2.0;
                             }
-                        if ui.add(egui::Button::new("RAZ"))
+                        if ui.add(egui::Button::new("reset"))
                             .clicked() {
                                 reset_system(&mut self.system);
                             }
